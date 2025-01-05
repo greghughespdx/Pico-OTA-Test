@@ -12,20 +12,20 @@ relay.value(0)
 
 # button.value() == 1 #initialize with switch state value off
 
-print(">> STARTING <<")
+# print(">> STARTING <<")
 
 while True:  #loop below forever
     
     if button.value() == 0:
         led.value(1)   # turn the LED on
         led2.value(1)   # turn the LED on
-        print("LED ON", button.value())
+        # print("LED ON", button.value())
         relay.value(0)    # activate the relay (connect normally-open circuit)
         utime.sleep(.1)
     else:
         led.value(0)   # turn the LED out
         led2.value(0)   # turn the LED out
-        print("LED OFF", button.value())
+        # print("LED OFF", button.value())
         relay.value(1)    # DEactivate the relay (connect normally-closed circuit)
         utime.sleep(.1)
         
