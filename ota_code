@@ -4,7 +4,7 @@ import network
 import socket
 import time
 
-ssid = 'farm3'
+ssid = 'Farm3'
 password = 'buddydogfarm3'
 
 def connect():
