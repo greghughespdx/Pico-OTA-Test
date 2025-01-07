@@ -1,24 +1,5 @@
 from machine import Pin
 import utime
-import network
-import socket
-import time
-
-ssid = 'Farm3'
-password = 'buddydogfarm3'
-
-def connect():
-    wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
-    wlan.connect(ssid, password)
-
-    while wlan.isconnected() == False:
-        print('Connecting... Please wait...')
-        time.sleep(1)
-
-    print("Connected! IP = ", wlan.ifconfig()[0])
-
-connect()
 
 button = Pin(15, Pin.IN, Pin.PULL_UP) # set pull-up resistor internally for switch circuit
 led = Pin(16, Pin.OUT) # Set up Pin 16 connected to LED
