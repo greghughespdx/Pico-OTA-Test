@@ -35,12 +35,12 @@
 #   * Length of time lights cycle off each flash cycle (in milliseconds, default = 250)
 #   * Threshold value for light sensor to turn runway lights on when dark (default = 2000)
 
-# Version: v2025-01-10_08:13:00PM
+# Version: v2025-01-10_08:20:00PM
 import network
 import ntptime
 import utime
 import machine
-from machine import Pin, ADC, UART
+from machine import Pin, ADC, UART, I2C
 import time
 
 # ==== CONFIGURATION VARIABLES ====
@@ -64,6 +64,8 @@ OVERRIDE_SWITCH_PIN = 14
 MAINTENANCE_BUTTON_PIN = 13
 RADIO_INPUT_PIN = 12
 MOMENTARY_BUTTON_PIN = 15
+LCD_SDA_PIN = 8  # LCD I2C SDA Pin (Resolved Conflict)
+LCD_SCL_PIN = 9  # LCD I2C SCL Pin (Resolved Conflict)
 
 # ==== INITIALIZE PINS ====
 runway_light = Pin(RUNWAY_LIGHT_PIN, Pin.OUT)
@@ -73,6 +75,9 @@ override_switch = Pin(OVERRIDE_SWITCH_PIN, Pin.IN, Pin.PULL_DOWN)
 maintenance_button = Pin(MAINTENANCE_BUTTON_PIN, Pin.IN, Pin.PULL_DOWN)
 radio_input = Pin(RADIO_INPUT_PIN, Pin.IN, Pin.PULL_DOWN)
 momentary_button = Pin(MOMENTARY_BUTTON_PIN, Pin.IN, Pin.PULL_DOWN)
+
+# Corrected I2C Bus Initialization for LCD Display
+i2c = I2C(0, scl=Pin(LCD_SCL_PIN), sda=Pin(LCD_SDA_PIN))
 
 # ==== GPS INITIALIZATION ====
 gps_uart = UART(1, baudrate=GPS_BAUDRATE, tx=Pin(GPS_TX_PIN), rx=Pin(GPS_RX_PIN))
