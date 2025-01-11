@@ -35,7 +35,7 @@
 #   * Length of time lights cycle off each flash cycle (in milliseconds, default = 250)
 #   * Threshold value for light sensor to turn runway lights on when dark (default = 2000)
 
-# Version: v2025-01-10_08:20:00PM
+# Version: v2025-01-10_09:10:00PM
 import network
 import ntptime
 import utime
@@ -46,11 +46,11 @@ import time
 # ==== CONFIGURATION VARIABLES ====
 WIFI_SSID = "YourNetworkSSID"
 WIFI_PASSWORD = "YourPasswordHere"
-GMT_OFFSET = -5  # Set your GMT offset in hours (e.g., -5 for EST, 1 for CET)
-NTP_UPDATE_INTERVAL = 12 * 60 * 60  # Sync every 12 hours
+GMT_OFFSET = -5  
+NTP_UPDATE_INTERVAL = 12 * 60 * 60  
 GPS_BAUDRATE = 9600
-GPS_TX_PIN = 4  # Pico TX to GT-U7 RXD
-GPS_RX_PIN = 5  # Pico RX to GT-U7 TXD
+GPS_TX_PIN = 4  
+GPS_RX_PIN = 5  
 
 # ==== LIGHT CONTROL VARIABLES ====
 AUTO_LIGHT_ON = True
@@ -64,8 +64,8 @@ OVERRIDE_SWITCH_PIN = 14
 MAINTENANCE_BUTTON_PIN = 13
 RADIO_INPUT_PIN = 12
 MOMENTARY_BUTTON_PIN = 15
-LCD_SDA_PIN = 8  # LCD I2C SDA Pin (Resolved Conflict)
-LCD_SCL_PIN = 9  # LCD I2C SCL Pin (Resolved Conflict)
+LCD_SDA_PIN = 8  
+LCD_SCL_PIN = 9  
 
 # ==== INITIALIZE PINS ====
 runway_light = Pin(RUNWAY_LIGHT_PIN, Pin.OUT)
@@ -76,21 +76,57 @@ maintenance_button = Pin(MAINTENANCE_BUTTON_PIN, Pin.IN, Pin.PULL_DOWN)
 radio_input = Pin(RADIO_INPUT_PIN, Pin.IN, Pin.PULL_DOWN)
 momentary_button = Pin(MOMENTARY_BUTTON_PIN, Pin.IN, Pin.PULL_DOWN)
 
-# Corrected I2C Bus Initialization for LCD Display
+# ==== I2C LCD1602 DISPLAY INITIALIZATION ====
 i2c = I2C(0, scl=Pin(LCD_SCL_PIN), sda=Pin(LCD_SDA_PIN))
 
-# ==== GPS INITIALIZATION ====
-gps_uart = UART(1, baudrate=GPS_BAUDRATE, tx=Pin(GPS_TX_PIN), rx=Pin(GPS_RX_PIN))
+# ==== LCD1602 DRIVER (NO EXTERNAL LIBRARY) ====
+class LCD1602:
+    def __init__(self, i2c, addr=0x27):
+        self.i2c = i2c
+        self.addr = addr
+        self.init_display()
+        
+    def send(self, data, mode):
+        high = data & 0xF0
+        low = (data << 4) & 0xF0
+        self.i2c.writeto(self.addr, bytes([high | mode | 0x08]))
+        self.pulse()
+        self.i2c.writeto(self.addr, bytes([low | mode | 0x08]))
+        self.pulse()
 
-# ==== CONTROL VARIABLES ====
-LIGHT_THRESHOLD = 2000
-DAYLIGHT_STABLE_DURATION = 300
-RADIO_CLICK_WINDOW = 5
-LIGHT_ON_DURATION = 600
-WARNING_FLASH_DURATION = 15
-FLASH_OFF_TIME = 250
-FLASH_CYCLE_TIME = 2000
-MIN_CLICK_DURATION = 100
+    def pulse(self):
+        self.i2c.writeto(self.addr, bytes([0x04]))
+        utime.sleep_us(50)
+        self.i2c.writeto(self.addr, bytes([0x08]))
+        utime.sleep_us(50)
+
+    def init_display(self):
+        utime.sleep_ms(20)
+        self.send(0x03, 0)
+        utime.sleep_ms(5)
+        self.send(0x03, 0)
+        utime.sleep_us(100)
+        self.send(0x03, 0)
+        self.send(0x02, 0)
+        self.send(0x28, 0)  
+        self.send(0x0C, 0)  
+        self.send(0x06, 0)  
+        self.clear()
+
+    def clear(self):
+        self.send(0x01, 0)
+        utime.sleep_ms(2)
+
+    def write(self, text):
+        for char in text:
+            self.send(ord(char), 1)
+
+    def move_to(self, col, row):
+        addr = 0x80 + col + (0x40 * row)
+        self.send(addr, 0)
+
+# ==== INITIALIZE THE LCD ====
+lcd = LCD1602(i2c)
 
 # ==== STATE VARIABLES ====
 activation_clicks = []
@@ -105,49 +141,57 @@ last_flash_cycle_time = 0
 lights_off_in_cycle = False
 last_loop_time = utime.ticks_ms()
 
+# ==== DISPLAY UPDATE FUNCTION ====
+def update_display():
+    """Update the LCD with real-time system status."""
+    lcd.clear()
+    if lights_on:
+        remaining_time = max(0, lights_on_timer - utime.time())
+        minutes = remaining_time // 60
+        seconds = remaining_time % 60
+        lcd.move_to(0, 0)
+        lcd.write("RUNWAY LIGHTS: ON")
+        lcd.move_to(0, 1)
+        if warning_flashing and (utime.ticks_ms() // FLASH_CYCLE_TIME % 2 == 0):
+            lcd.write("  FLASHING...")
+        else:
+            lcd.write(f"TIMER: {minutes:02}:{seconds:02}")
+    else:
+        current_time = utime.localtime()
+        lcd.move_to(0, 0)
+        lcd.write("RUNWAY LIGHTS: OFF")
+        lcd.move_to(0, 1)
+        lcd.write(f"{current_time[3]:02}:{current_time[4]:02}:{current_time[5]:02}")
+
 # ==== WARNING FLASH FUNCTION ====
 def warning_flash():
-    """Flashes the runway lights twice per cycle during the warning period."""
-    global warning_flashing, last_flash_cycle_time, lights_off_in_cycle, warning_start_time
-
+    global warning_flashing, last_flash_cycle_time, warning_start_time
     current_time = utime.ticks_ms()
-
-    # If warning just started, reset timers
     if warning_start_time is None:
         warning_start_time = current_time
         last_flash_cycle_time = current_time
-        lights_off_in_cycle = False
 
-    # Stop warning flashing after the total warning duration
     if utime.ticks_diff(current_time, warning_start_time) > WARNING_FLASH_DURATION * 1000:
         warning_flashing = False
         warning_start_time = None
         set_light_state(0)
-        print("Warning flash completed, lights turned off.")
         return
 
-    # First flash off
     cycle_progress = utime.ticks_diff(current_time, last_flash_cycle_time)
     if cycle_progress < FLASH_OFF_TIME:
         set_light_state(0)
-    # Lights on after first flash
     elif cycle_progress < FLASH_OFF_TIME * 2:
         set_light_state(1)
-    # Second flash off
     elif cycle_progress < FLASH_OFF_TIME * 3:
         set_light_state(0)
-    # Lights on for the remainder of the cycle
     elif cycle_progress < FLASH_CYCLE_TIME:
         set_light_state(1)
-    # Reset the cycle once 2 seconds have passed
     else:
         last_flash_cycle_time = current_time
 
 # ==== TIMER RESET FLASH FUNCTION ====
 def timer_reset_flash():
-    """Flashes the runway lights twice as visual confirmation for a timer reset."""
     global last_flash_cycle_time
-    current_time = utime.ticks_ms()
     set_light_state(0)
     utime.sleep_ms(FLASH_OFF_TIME)
     set_light_state(1)
@@ -155,7 +199,6 @@ def timer_reset_flash():
     set_light_state(0)
     utime.sleep_ms(FLASH_OFF_TIME)
     set_light_state(1)
-    last_flash_cycle_time = current_time
 
 # ==== OTHER FUNCTIONS ====
 def set_light_state(state):
@@ -217,7 +260,7 @@ while True:
         detect_click(momentary_button)
         auto_light_control()
         check_turn_off_time()
+        update_display()
 
-        # Execute the warning flash if active
         if warning_flashing:
             warning_flash()
