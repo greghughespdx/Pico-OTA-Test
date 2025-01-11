@@ -35,6 +35,7 @@
 #   * Length of time lights cycle off each flash cycle (in milliseconds, default = 250)
 #   * Threshold value for light sensor to turn runway lights on when dark (default = 2000)
 
+# Version: v2025-01-10_08:13:00PM
 import network
 import ntptime
 import utime
@@ -48,21 +49,21 @@ WIFI_PASSWORD = "YourPasswordHere"
 GMT_OFFSET = -5  # Set your GMT offset in hours (e.g., -5 for EST, 1 for CET)
 NTP_UPDATE_INTERVAL = 12 * 60 * 60  # Sync every 12 hours
 GPS_BAUDRATE = 9600
-GPS_TX_PIN = 4
-GPS_RX_PIN = 5
+GPS_TX_PIN = 4  # Pico TX to GT-U7 RXD
+GPS_RX_PIN = 5  # Pico RX to GT-U7 TXD
 
 # ==== LIGHT CONTROL VARIABLES ====
 AUTO_LIGHT_ON = True
 TURN_OFF_TIME = None
 
 # ==== PIN CONFIGURATION ====
-RUNWAY_LIGHT_PIN = 15
+RUNWAY_LIGHT_PIN = 17
 ONBOARD_LED_PIN = 25
 LIGHT_SENSOR_PIN = 26
 OVERRIDE_SWITCH_PIN = 14
 MAINTENANCE_BUTTON_PIN = 13
 RADIO_INPUT_PIN = 12
-MOMENTARY_BUTTON_PIN = 11
+MOMENTARY_BUTTON_PIN = 15
 
 # ==== INITIALIZE PINS ====
 runway_light = Pin(RUNWAY_LIGHT_PIN, Pin.OUT)
@@ -137,6 +138,20 @@ def warning_flash():
     else:
         last_flash_cycle_time = current_time
 
+# ==== TIMER RESET FLASH FUNCTION ====
+def timer_reset_flash():
+    """Flashes the runway lights twice as visual confirmation for a timer reset."""
+    global last_flash_cycle_time
+    current_time = utime.ticks_ms()
+    set_light_state(0)
+    utime.sleep_ms(FLASH_OFF_TIME)
+    set_light_state(1)
+    utime.sleep_ms(FLASH_OFF_TIME)
+    set_light_state(0)
+    utime.sleep_ms(FLASH_OFF_TIME)
+    set_light_state(1)
+    last_flash_cycle_time = current_time
+
 # ==== OTHER FUNCTIONS ====
 def set_light_state(state):
     runway_light.value(state)
@@ -176,6 +191,7 @@ def detect_click(source_pin):
         lights_on = True
         lights_on_timer = utime.time() + LIGHT_ON_DURATION
         set_light_state(1)
+        timer_reset_flash()
 
 def check_turn_off_time():
     global lights_on, warning_flashing, warning_start_time
@@ -200,4 +216,3 @@ while True:
         # Execute the warning flash if active
         if warning_flashing:
             warning_flash()
-
